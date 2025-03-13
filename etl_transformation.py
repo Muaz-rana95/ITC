@@ -18,10 +18,10 @@ HIVE_DB = "default"
 SOURCE_TABLE = "tfl_undergroundrecord"
 TARGET_TABLE = "tfl_undergroundresul"
 
-logger.info("Loading data from source table: {}.{}".format(HIVE_DB, SOURCE_TABLE))
+logger.info("Loading data from source table: %s.%s", HIVE_DB, SOURCE_TABLE)
 
 # Load data from the source table
-df_source = spark.sql(f"SELECT * FROM {HIVE_DB}.{SOURCE_TABLE}")
+df_source = spark.sql("SELECT * FROM {}.{}".format(HIVE_DB, SOURCE_TABLE))
 
 # Add an "ingestion_timestamp" column
 df_transformed = df_source.withColumn("ingestion_timestamp", current_timestamp())
@@ -35,10 +35,11 @@ df_transformed = df_transformed.filter(col("route").isNotNull())
 
 # Ensure target table exists before querying max(record_id)
 try:
-    max_record_id = spark.sql(f"SELECT MAX(record_id) FROM {HIVE_DB}.{TARGET_TABLE}").collect()[0][0] or 0
-    logger.info(f"Max existing record_id: {max_record_id}")
+    max_record_id_query = "SELECT MAX(record_id) FROM {}.{}".format(HIVE_DB, TARGET_TABLE)
+    max_record_id = spark.sql(max_record_id_query).collect()[0][0] or 0
+    logger.info("Max existing record_id: %d", max_record_id)
 except:
-    logger.warning(f"Table {TARGET_TABLE} does not exist. Starting record_id from 1.")
+    logger.warning("Table %s.%s does not exist. Starting record_id from 1.", HIVE_DB, TARGET_TABLE)
     max_record_id = 0
 
 # Generate a unique record_id using monotonically_increasing_id
@@ -48,10 +49,17 @@ df_transformed = df_transformed.withColumn("record_id", (monotonically_increasin
 expected_columns = ["record_id", "timedetails", "line", "status", "reason", "delay_time", "route", "ingestion_timestamp"]
 df_final = df_transformed.select(*expected_columns)
 
-logger.info(f"Writing transformed data to Hive table: {HIVE_DB}.{TARGET_TABLE}")
+logger.info("Writing transformed data to Hive table: %s.%s", HIVE_DB, TARGET_TABLE)
 
-# Append data into the existing Hive table
-df_final.write.mode("append").insertInto(f"{HIVE_DB}.{TARGET_TABLE}")
+# Append data into the existing Hive table, ensuring no duplication
+df_final.createOrReplaceTempView("new_data")
+
+# Use a left anti join to avoid duplicating existing records based on record_id
+df_existing = spark.sql("SELECT * FROM {}.{}".format(HIVE_DB, TARGET_TABLE))
+df_unique = df_final.join(df_existing, "record_id", "left_anti")
+
+# Write only new data
+df_unique.write.mode("append").insertInto("{}.{}".format(HIVE_DB, TARGET_TABLE))
 
 logger.info("Data successfully written to Hive. Closing Spark session.")
 
