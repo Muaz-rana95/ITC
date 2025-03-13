@@ -26,8 +26,8 @@ df_source = spark.sql("SELECT * FROM {}.{}".format(HIVE_DB, SOURCE_TABLE))
 # Add an "ingestion_timestamp" column
 df_transformed = df_source.withColumn("ingestion_timestamp", current_timestamp())
 
-# Clean "route" and "delay_time" columns by removing quotes
-for col_name in ["route", "delay_time"]:
+# Clean "route", "delay_time", and "reason" columns by removing quotes
+for col_name in ["route", "delay_time", "reason"]:  # Added "reason" column to the list
     df_transformed = df_transformed.withColumn(col_name, regexp_replace(col(col_name), r'^[\'"]+|[\'"]+$', ''))
 
 # Remove NULL values from the "route" column
