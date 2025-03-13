@@ -16,7 +16,7 @@ spark = SparkSession.builder \
 # Define database and tables
 HIVE_DB = "default"
 SOURCE_TABLE = "tfl_undergroundrecord"
-TARGET_TABLE = "tfl_undergroundresul"
+TARGET_TABLE = "tfl_underground_result_n"
 
 logger.info("Loading data from source table: %s.%s", HIVE_DB, SOURCE_TABLE)
 
