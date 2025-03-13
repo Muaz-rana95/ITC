@@ -49,14 +49,17 @@ df_transformed = df_transformed.withColumn("record_id", (monotonically_increasin
 expected_columns = ["record_id", "timedetails", "line", "status", "reason", "delay_time", "route", "ingestion_timestamp"]
 df_final = df_transformed.select(*expected_columns)
 
-logger.info("Writing transformed data to Hive table: %s.%s", HIVE_DB, TARGET_TABLE)
+# Sort data by "timedetails" in descending order to make the most recent data appear first
+df_sorted = df_final.orderBy(col("timedetails").desc())
+
+logger.info("Writing transformed and sorted data to Hive table: %s.%s", HIVE_DB, TARGET_TABLE)
 
 # Append data into the existing Hive table, ensuring no duplication
-df_final.createOrReplaceTempView("new_data")
+df_sorted.createOrReplaceTempView("new_data")
 
 # Use a left anti join to avoid duplicating existing records based on record_id
 df_existing = spark.sql("SELECT * FROM {}.{}".format(HIVE_DB, TARGET_TABLE))
-df_unique = df_final.join(df_existing, "record_id", "left_anti")
+df_unique = df_sorted.join(df_existing, "record_id", "left_anti")
 
 # Write only new data
 df_unique.write.mode("append").insertInto("{}.{}".format(HIVE_DB, TARGET_TABLE))
